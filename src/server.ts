@@ -83,8 +83,8 @@ function lintFile(doc: TextDocument) {
 }
 
 function makeDiagnostic(result: ILintOut, ruleCode: number): Diagnostic {
-    const range: Range = {start: {line: result.position.start.line - 1, character: result.position.start.character - 1},
-                          end: {line: result.position.end.line - 1, character: result.position.end.character - 1}};
+    const range: Range = {start: {line: result.position.start.line - 1, character: result.position.start.character},
+                          end: {line: result.position.end.line - 1, character: result.position.end.character}};
     const message = code2String(result.pattern);
     const severity = convertSeverity(makeSeverity(result.pattern.severity));
     const diagnostic = Diagnostic.create(range, message, severity, ruleCode, "devreplay");
