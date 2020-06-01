@@ -1,6 +1,6 @@
 "use strict";
 
-import { code2String, fixWithPattern, ILintOut, IPattern, lint, makeSeverity } from "devreplay";
+import { code2String, fixWithPattern, LintOut, Pattern, lint, makeSeverity } from "devreplay";
 import * as path from "path";
 import {
     CodeAction,
@@ -82,9 +82,9 @@ function lintFile(doc: TextDocument) {
     return lint(fileName, fileContent, ruleFile);
 }
 
-function makeDiagnostic(result: ILintOut, ruleCode: number): Diagnostic {
-    const range: Range = {start: {line: result.position.start.line - 1, character: result.position.start.character},
-                          end: {line: result.position.end.line - 1, character: result.position.end.character}};
+function makeDiagnostic(result: LintOut, ruleCode: number): Diagnostic {
+    const range: Range = {start: {line: result.position.start.line - 1, character: result.position.start.character - 1},
+                          end: {line: result.position.end.line - 1, character: result.position.end.character - 1}};
     const message = code2String(result.pattern);
     const severity = convertSeverity(makeSeverity(result.pattern.severity));
     const diagnostic = Diagnostic.create(range, message, severity, ruleCode, "devreplay");
@@ -135,7 +135,7 @@ function setupDocumentsListeners() {
     });
 }
 
-function createEditByPattern(document: TextDocument, range: Range, pattern: IPattern): WorkspaceEdit {
+function createEditByPattern(document: TextDocument, range: Range, pattern: Pattern): WorkspaceEdit {
     const newText = fixWithPattern(document.getText(range), pattern);
     if (newText !== undefined) {
         const edits = [TextEdit.replace(range, newText)];
