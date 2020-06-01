@@ -1,7 +1,7 @@
-"use strict";
+'use strict';
 
-import { code2String, fixWithPattern, LintOut, Pattern, lint, makeSeverity } from "devreplay";
-import * as path from "path";
+import { code2String, fixWithPattern, LintOut, Pattern, lint, makeSeverity } from 'devreplay';
+import * as path from 'path';
 import {
     CodeAction,
     CodeActionKind,
@@ -15,12 +15,12 @@ import {
     TextDocumentSyncKind,
     TextEdit,
     WorkspaceEdit,
-} from "vscode-languageserver";
-import { TextDocument } from "vscode-languageserver-textdocument";
-import { URI } from "vscode-uri";
+} from 'vscode-languageserver';
+import { TextDocument } from 'vscode-languageserver-textdocument';
+import { URI } from 'vscode-uri';
 
 namespace CommandIDs {
-    export const fix = "devreplay.fix";
+    export const fix = 'devreplay.fix';
 }
 // Create a connection for the server. The connection uses Node's IPC as a transport.
 // Also include all preview / proposed LSP features.
@@ -75,7 +75,7 @@ function lintFile(doc: TextDocument) {
     const fileContent = doc.getText();
     const ruleFile = URI.parse(`${rootPath}/devreplay.json`).fsPath;
     const fileName = URI.parse(doc.uri).fsPath;
-    if (fileName.endsWith(ruleFile) || fileName.endsWith(".git")) {
+    if (fileName.endsWith(ruleFile) || fileName.endsWith('.git')) {
         return [];
     }
 
@@ -87,7 +87,7 @@ function makeDiagnostic(result: LintOut, ruleCode: number): Diagnostic {
                           end: {line: result.position.end.line - 1, character: result.position.end.character - 1}};
     const message = code2String(result.pattern);
     const severity = convertSeverity(makeSeverity(result.pattern.severity));
-    const diagnostic = Diagnostic.create(range, message, severity, ruleCode, "devreplay");
+    const diagnostic = Diagnostic.create(range, message, severity, ruleCode, 'devreplay');
 
     return diagnostic;
 }
@@ -108,7 +108,7 @@ function setupDocumentsListeners() {
     });
 
     connection.onCodeAction((params) => {
-        const diagnostics = params.context.diagnostics.filter((diag) => diag.source === "devreplay");
+        const diagnostics = params.context.diagnostics.filter((diag) => diag.source === 'devreplay');
         if (diagnostics.length === 0) {
             return [];
         }
@@ -123,7 +123,7 @@ function setupDocumentsListeners() {
         const results = lint(textDocument.uri, textDocument.getText(), ruleFile);
         diagnostics.forEach((diag) => {
             const targetRule = results[Number(diag.code)];
-            const title = "Fix by DevReplay";
+            const title = 'Fix by DevReplay';
             const fixAction = CodeAction.create(title,
                                                 createEditByPattern(textDocument, diag.range, targetRule.pattern),
                                                 CodeActionKind.QuickFix);
@@ -148,13 +148,13 @@ function createEditByPattern(document: TextDocument, range: Range, pattern: Patt
 
 function convertSeverity(severity: string) {
     switch (severity) {
-        case "E":
+        case 'E':
             return DiagnosticSeverity.Error;
-        case "W":
+        case 'W':
             return DiagnosticSeverity.Warning;
-        case "I":
+        case 'I':
             return DiagnosticSeverity.Information;
-        case "H":
+        case 'H':
                 return DiagnosticSeverity.Hint;
         default:
             return DiagnosticSeverity.Warning;
