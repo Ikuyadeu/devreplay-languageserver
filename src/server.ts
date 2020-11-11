@@ -124,7 +124,7 @@ function setupDocumentsListeners() {
         const results = lint(textDocument.uri, textDocument.getText(), ruleFile);
         diagnostics.forEach((diag) => {
             const targetRule = results[Number(diag.code)];
-            const title = 'Fix by DevReplay';
+            const title = makeFixTitle(targetRule.pattern.ruleId);
             const fixAction = CodeAction.create(title,
                                                 createEditByPattern(textDocument, diag.range, targetRule.pattern),
                                                 CodeActionKind.QuickFix);
@@ -160,6 +160,13 @@ function convertSeverity(severity: string) {
         default:
             return DiagnosticSeverity.Warning;
     }
+}
+
+function makeFixTitle(ruleId?: string) {
+    if (ruleId) {
+        return `Fix ${ruleId}`;
+    }
+    return 'Fix';
 }
 
 // Listen on the connection
