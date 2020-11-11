@@ -33,13 +33,14 @@ connection.onInitialize((params: InitializeParams) => {
     const workspaceFolders = params.workspaceFolders;
     workspaceFolder = workspaceFolders !== null ? workspaceFolders[0].uri : undefined;
     documents = new TextDocuments(TextDocument);
+    const syncKind: TextDocumentSyncKind = TextDocumentSyncKind.Incremental;
     setupDocumentsListeners();
 
     return {
         capabilities: {
             textDocumentSync: {
                 openClose: true,
-                change: TextDocumentSyncKind.Incremental,
+                change: syncKind,
                 willSaveWaitUntil: false,
                 save: {
                     includeText: false,
