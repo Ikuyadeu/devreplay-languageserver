@@ -1,6 +1,6 @@
 'use strict';
 
-import { code2String, fixWithPattern, LintOut, Pattern, lint, makeSeverity } from 'devreplay';
+import { code2String, fixWithRule, LintOut, Rule, lint, makeSeverity } from 'devreplay';
 import * as path from 'path';
 import {
     CodeAction,
@@ -15,13 +15,10 @@ import {
     TextDocumentSyncKind,
     TextEdit,
     WorkspaceEdit,
-} from 'vscode-languageserver';
+} from 'vscode-languageserver/node';
 import { TextDocument } from 'vscode-languageserver-textdocument';
 import { URI } from 'vscode-uri';
 
-namespace CommandIDs {
-    export const fix = 'devreplay.fix';
-}
 // Create a connection for the server. The connection uses Node's IPC as a transport.
 // Also include all preview / proposed LSP features.
 const connection = createConnection();
@@ -50,7 +47,7 @@ connection.onInitialize((params: InitializeParams) => {
                 codeActionKinds: [CodeActionKind.QuickFix],
             },
             executeCommandProvider: {
-                commands: [CommandIDs.fix],
+                commands: ['devreplay.fix'],
             },
         },
     };
@@ -67,27 +64,30 @@ function validate(doc: TextDocument) {
         const result = results[i];
         diagnostics.push(makeDiagnostic(result, i));
     }
-    connection.sendDiagnostics({ uri: doc.uri, diagnostics });
+    connection.sendDiagnostics({
+        uri: doc.uri,
+        version: doc.version,
+        diagnostics
+    });
 }
 
 function lintFile(doc: TextDocument) {
     const docDir = path.dirname(path.normalize(URI.parse(doc.uri).fsPath));
     const rootPath = (workspaceFolder !== undefined) ? workspaceFolder : docDir;
-    const fileContent = doc.getText();
     const ruleFile = URI.parse(`${rootPath}/devreplay.json`).fsPath;
     const fileName = URI.parse(doc.uri).fsPath;
     if (fileName.endsWith(ruleFile) || fileName.endsWith('.git')) {
         return [];
     }
 
-    return lint(fileName, fileContent, ruleFile);
+    return lint([fileName], ruleFile);
 }
 
 function makeDiagnostic(result: LintOut, ruleCode: number): Diagnostic {
     const range: Range = {start: {line: result.position.start.line - 1, character: result.position.start.character - 1},
                           end: {line: result.position.end.line - 1, character: result.position.end.character - 1}};
-    const message = code2String(result.pattern);
-    const severity = convertSeverity(makeSeverity(result.pattern.severity));
+    const message = code2String(result.rule);
+    const severity = convertSeverity(makeSeverity(result.rule.severity));
     const diagnostic = Diagnostic.create(range, message, severity, ruleCode, 'devreplay');
 
     return diagnostic;
@@ -121,12 +121,12 @@ function setupDocumentsListeners() {
         const rootPath = (workspaceFolder !== undefined) ? workspaceFolder : docDir;
         const ruleFile = URI.parse(`${rootPath}/devreplay.json`).fsPath;
         const codeActions: CodeAction[] = [];
-        const results = lint(textDocument.uri, textDocument.getText(), ruleFile);
+        const results = lint([textDocument.uri], ruleFile);
         diagnostics.forEach((diag) => {
             const targetRule = results[Number(diag.code)];
-            const title = makeFixTitle(targetRule.pattern.ruleId);
+            const title = makeFixTitle(targetRule.rule.ruleId);
             const fixAction = CodeAction.create(title,
-                                                createEditByPattern(textDocument, diag.range, targetRule.pattern),
+                                                createEditByPattern(textDocument, diag.range, targetRule.rule),
                                                 CodeActionKind.QuickFix);
             fixAction.diagnostics = [diag];
             codeActions.push(fixAction);
@@ -136,8 +136,8 @@ function setupDocumentsListeners() {
     });
 }
 
-function createEditByPattern(document: TextDocument, range: Range, pattern: Pattern): WorkspaceEdit {
-    const newText = fixWithPattern(document.getText(range), pattern);
+function createEditByPattern(document: TextDocument, range: Range, pattern: Rule): WorkspaceEdit {
+    const newText = fixWithRule(document.getText(range), pattern);
     if (newText !== undefined) {
         const edits = [TextEdit.replace(range, newText)];
 
