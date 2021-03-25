@@ -83,8 +83,14 @@ function lintFile(doc: TextDocument) {
 }
 
 function makeDiagnostic(result: LintOut, ruleCode: number): Diagnostic {
-	const range: Range = {start: {line: result.position.start.line - 1, character: result.position.start.character - 1},
-		end: {line: result.position.end.line - 1, character: result.position.end.character - 1}};
+	const range: Range = {
+		start: {
+			line: result.position.start.line - 1,
+			character: result.position.start.character - 1},
+		end: {
+			line: result.position.end.line - 1,
+			character: result.position.end.character - 1}
+	};
 	const message = code2String(result.rule);
 	const severity = convertSeverity(makeSeverity(result.rule.severity));
 	const diagnostic = Diagnostic.create(range, message, severity, ruleCode, 'devreplay');
@@ -115,9 +121,6 @@ function setupDocumentsListeners() {
 		if (textDocument === undefined) {
 			return [];
 		}
-		const docDir = path.dirname(path.normalize(URI.parse(textDocument.uri).fsPath));
-		const rootPath = (workspaceFolder !== undefined) ? workspaceFolder : docDir;
-		const ruleFile = URI.parse(`${rootPath}/devreplay.json`).fsPath;
 		const codeActions: CodeAction[] = [];
 		const results = lintFile(textDocument);
 		diagnostics.forEach((diag) => {
