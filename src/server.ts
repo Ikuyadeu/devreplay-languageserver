@@ -184,5 +184,15 @@ function makeFixTitle(ruleId?: string | string[]) {
 	return 'Fix by DevReplay';
 }
 
+function disableRule(rule: Rule) {
+	// ルールのIDを取得
+	const ruleId = rule.ruleId;
+	// ルールファイルを開く
+	// ルールの場所を特定
+	// 該当ルールを消す
+	// ルールを保存
+}
+
+
 // Listen on the connection
 connection.listen();
