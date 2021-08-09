@@ -22,7 +22,7 @@
     "url": "https://github.com/devreplay/devreplay-languageserver/issues"
   },
   "dependencies": {
-    "devreplay": "^1.9.32",
+    "devreplay": "^1.9.33",
     "vscode-languageserver": "7.0.0",
     "vscode-languageserver-textdocument": "^1.0.1",
     "vscode-uri": "^3.0.2"
