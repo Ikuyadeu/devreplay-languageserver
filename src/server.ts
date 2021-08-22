@@ -82,7 +82,7 @@ function lintFile(doc: TextDocument) {
 	if (workspaceFolder === undefined) {
 		return [];
 	}
-	const ruleFile = URI.parse(`${workspaceFolder.uri}/devreplay.json`).fsPath;
+	const ruleFile = URI.parse(`${workspaceFolder.uri}/.devreplay.json`).fsPath;
 	const fileName = URI.parse(doc.uri).fsPath;
 	if (fileName.endsWith(ruleFile) || fileName.endsWith('.git')) {
 		return [];
@@ -137,7 +137,7 @@ function setupDocumentsListeners() {
 		const results = lintFile(textDocument);
 		diagnostics.forEach((diagnostic) => {
 			const targetRule = results[Number(diagnostic.code)];
-			const title = makeFixTitle(targetRule.rule.after);
+			const title = makeFixTitle(targetRule.rule.ruleId);
 			const fixAction = CodeAction.create(
 				title,
 				createEditByPattern(textDocument, diagnostic.range, targetRule.rule),
@@ -179,7 +179,7 @@ function convertSeverity(severity: string) {
 
 function makeFixTitle(ruleId?: string | string[]) {
 	if (ruleId) {
-		return `Fix to ${ruleId} by DevReplay`;
+		return `Fix to ${ruleId}`;
 	}
 	return 'Fix by DevReplay';
 }
