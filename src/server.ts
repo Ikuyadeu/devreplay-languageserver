@@ -2,6 +2,8 @@
 
 import { code2String, fixWithRules, LintOut, Rule, lint, makeSeverity } from 'devreplay';
 import * as path from 'path';
+import * as fs from 'fs';
+
 import {
 	CodeAction,
 	CodeActionKind,
@@ -79,10 +81,7 @@ function validate(document: TextDocument) {
 }
 
 function lintFile(doc: TextDocument) {
-	if (workspaceFolder === undefined) {
-		return [];
-	}
-	const ruleFile = URI.parse(`${workspaceFolder.uri}/.devreplay.json`).fsPath;
+	const ruleFile = URI.parse(getDevReplayPath()).fsPath;
 	const fileName = URI.parse(doc.uri).fsPath;
 	if (fileName.endsWith(ruleFile) || fileName.endsWith('.git')) {
 		return [];
@@ -101,7 +100,7 @@ function makeDiagnostic(result: LintOut, code: number): Diagnostic {
 			character: result.position.end.character - 1}
 	};
 	const message = code2String(result.rule);
-	const severity = convertSeverity(makeSeverity(result.rule.severity));
+	const severity = convertSeverityToDiagnostic(makeSeverity(result.rule.severity));
 	return Diagnostic.create(range, message, severity, code, 'devreplay');
 }
 
@@ -162,7 +161,42 @@ function createEditByPattern(document: TextDocument, range: Range, pattern: Rule
 	return { documentChanges: [] };
 }
 
-function convertSeverity(severity: string) {
+function makeFixTitle(ruleId?: string | string[]) {
+	if (ruleId) {
+		return `Fix to ${ruleId}`;
+	}
+	return 'Fix by DevReplay';
+}
+
+function disableRule(rule: Rule) {
+	// ルールのIDを取得
+	const ruleId = rule.ruleId;
+	// ルールファイルを開く
+	const ruleFile = URI.parse(getDevReplayPath()).fsPath;
+	const rules = JSON.parse(fs.readFileSync(ruleFile, 'utf8')) as Rule[];
+	// ルールの場所を特定
+	const ruleIndex = rules.findIndex((r) => r.ruleId === ruleId);
+	// TODO: 該当ルールのseverityを"off"に変更
+	rules[ruleIndex].severity = 'E';
+	// ルールを保存
+	fs.writeFileSync(ruleFile, JSON.stringify(rules, null, '\t'));
+}
+
+enum RuleSeverity {
+	// Original DevReplay values
+	info = 'I',
+	warn = 'W',
+	error = 'E',
+	hint = 'H',
+
+	// Added severity override changes
+	off = 'O',
+	default = 'default',
+	downgrade = 'downgrade',
+	upgrade = 'upgrade'
+}
+
+function convertSeverityToDiagnostic(severity: string) {
 	switch (severity) {
 		case 'E':
 			return DiagnosticSeverity.Error;
@@ -177,22 +211,92 @@ function convertSeverity(severity: string) {
 	}
 }
 
-function makeFixTitle(ruleId?: string | string[]) {
-	if (ruleId) {
-		return `Fix to ${ruleId}`;
+function adjustSeverityForOverride(severity: RuleSeverity, severityOverride?: RuleSeverity) {
+	switch (severityOverride) {
+		case RuleSeverity.off:
+		case RuleSeverity.info:
+		case RuleSeverity.warn:
+		case RuleSeverity.error:
+		case RuleSeverity.hint:
+			return severityOverride;
+
+		case RuleSeverity.downgrade:
+			switch (convertSeverityToDiagnostic(severity)) {
+				case DiagnosticSeverity.Error:
+					return RuleSeverity.warn;
+				case DiagnosticSeverity.Warning:
+					return RuleSeverity.info;
+				case DiagnosticSeverity.Information:
+				case DiagnosticSeverity.Hint:
+					return RuleSeverity.hint;
+			}
+
+		case RuleSeverity.upgrade:
+			switch (convertSeverityToDiagnostic(severity)) {
+				case DiagnosticSeverity.Hint:
+					return RuleSeverity.info;
+				case DiagnosticSeverity.Information:
+					return RuleSeverity.warn;
+				case DiagnosticSeverity.Warning:
+				case DiagnosticSeverity.Error:
+					return RuleSeverity.error;
+			}
+
+		default:
+			return severity;
 	}
-	return 'Fix by DevReplay';
 }
 
-function disableRule(rule: Rule) {
-	// ルールのIDを取得
-	const ruleId = rule.ruleId;
-	// ルールファイルを開く
-	// ルールの場所を特定
-	// 該当ルールを消す
-	// ルールを保存
+export function writePattern(rules: Rule[]) {
+	const outPatterns = readCurrentPattern().concat(rules);
+	const patternStr = JSON.stringify(outPatterns, undefined, 2);
+	const filePath = getDevReplayPath();
+	try {
+		fs.writeFileSync(filePath, patternStr);
+	} catch(err) {
+		console.log(err.name);
+	}
 }
 
+
+function readCurrentPattern(): Rule[] {
+	const devreplayPath = getDevReplayPath();
+	if (devreplayPath === undefined) { return []; }
+	let fileContents = undefined;
+	try{
+		fileContents = tryReadFile(devreplayPath);
+	} catch {
+		return [];
+	}
+	if (fileContents === undefined) {
+		return [];
+	}
+	return JSON.parse(fileContents) as Rule[];
+}
+
+function getDevReplayPath() {
+	return path.join(workspaceFolder!.uri, '.devreplay.json');
+}
+
+export function tryReadFile(filename: string) {
+	if (!fs.existsSync(filename)) {
+		throw new Error(`Unable to open file: ${filename}`);
+	}
+	const buffer = Buffer.allocUnsafe(256);
+	const fd = fs.openSync(filename, 'r');
+	try {
+		fs.readSync(fd, buffer, 0, 256, 0);
+		if (buffer.readInt8(0) === 0x47 && buffer.readInt8(188) === 0x47) {
+			console.log(`${filename}: ignoring MPEG transport stream\n`);
+
+			return undefined;
+		}
+	} finally {
+		fs.closeSync(fd);
+	}
+
+	return fs.readFileSync(filename, 'utf8');
+}
 
 // Listen on the connection
 connection.listen();
