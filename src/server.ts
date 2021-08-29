@@ -1,6 +1,6 @@
 'use strict';
 
-import { code2String, fixWithRules, LintOut, Rule, lint, makeSeverity } from 'devreplay';
+import { code2String, fixWithRules, LintOut, RuleSeverity, lint, makeSeverity, readCurrentRules, DevReplayRule } from 'devreplay';
 import * as path from 'path';
 import * as fs from 'fs';
 
@@ -22,6 +22,7 @@ import {
 } from 'vscode-languageserver/node';
 import { TextDocument } from 'vscode-languageserver-textdocument';
 import { URI } from 'vscode-uri';
+import { dirname } from 'path';
 
 // Create a connection for the server. The connection uses Node's IPC as a transport.
 // Also include all preview / proposed LSP features.
@@ -136,7 +137,7 @@ function setupDocumentsListeners() {
 		const results = lintFile(textDocument);
 		diagnostics.forEach((diagnostic) => {
 			const targetRule = results[Number(diagnostic.code)];
-			const title = makeFixTitle(targetRule.rule.ruleId);
+			const title = makeFixTitle();
 			const fixAction = CodeAction.create(
 				title,
 				createEditByPattern(textDocument, diagnostic.range, targetRule.rule),
@@ -149,7 +150,7 @@ function setupDocumentsListeners() {
 	});
 }
 
-function createEditByPattern(document: TextDocument, range: Range, pattern: Rule): WorkspaceEdit {
+function createEditByPattern(document: TextDocument, range: Range, pattern: DevReplayRule): WorkspaceEdit {
 	const textDocumentIdentifier: VersionedTextDocumentIdentifier = {uri: document.uri, version: document.version};
 	const newText = fixWithRules(document.getText(range), [pattern]);
 	if (newText !== undefined) {
@@ -161,28 +162,25 @@ function createEditByPattern(document: TextDocument, range: Range, pattern: Rule
 	return { documentChanges: [] };
 }
 
-function makeFixTitle(ruleId?: string | string[]) {
-	if (ruleId) {
-		return `Fix to ${ruleId}`;
-	}
+function makeFixTitle() {
 	return 'Fix by DevReplay';
 }
 
-function disableRule(rule: Rule) {
+function disableRule(rule: DevReplayRule) {
 	// ルールのIDを取得
 	const ruleId = rule.ruleId;
 	// ルールファイルを開く
-	const ruleFile = URI.parse(getDevReplayPath()).fsPath;
-	const rules = JSON.parse(fs.readFileSync(ruleFile, 'utf8')) as Rule[];
+	// const ruleFile = URI.parse(getDevReplayPath()).fsPath;
+	const rules = readCurrentRules(workspaceFolder!.uri);
 	// ルールの場所を特定
 	const ruleIndex = rules.findIndex((r) => r.ruleId === ruleId);
 	// TODO: 該当ルールのseverityを"off"に変更
-	rules[ruleIndex].severity = 'E';
+	rules[ruleIndex].severity = RuleSeverity.off;
 	// ルールを保存
-	fs.writeFileSync(ruleFile, JSON.stringify(rules, null, '\t'));
+	fs.writeFileSync(getDevReplayPath(), JSON.stringify(rules, null, '\t'));
 }
 
-enum RuleSeverity {
+enum EditorRuleSeverity {
 	// Original DevReplay values
 	info = 'I',
 	warn = 'W',
@@ -211,35 +209,35 @@ function convertSeverityToDiagnostic(severity: string) {
 	}
 }
 
-function adjustSeverityForOverride(severity: RuleSeverity, severityOverride?: RuleSeverity) {
+function adjustSeverityForOverride(severity: EditorRuleSeverity, severityOverride?: EditorRuleSeverity) {
 	switch (severityOverride) {
-		case RuleSeverity.off:
-		case RuleSeverity.info:
-		case RuleSeverity.warn:
-		case RuleSeverity.error:
-		case RuleSeverity.hint:
+		case EditorRuleSeverity.off:
+		case EditorRuleSeverity.info:
+		case EditorRuleSeverity.warn:
+		case EditorRuleSeverity.error:
+		case EditorRuleSeverity.hint:
 			return severityOverride;
 
-		case RuleSeverity.downgrade:
+		case EditorRuleSeverity.downgrade:
 			switch (convertSeverityToDiagnostic(severity)) {
 				case DiagnosticSeverity.Error:
-					return RuleSeverity.warn;
+					return EditorRuleSeverity.warn;
 				case DiagnosticSeverity.Warning:
-					return RuleSeverity.info;
+					return EditorRuleSeverity.info;
 				case DiagnosticSeverity.Information:
 				case DiagnosticSeverity.Hint:
-					return RuleSeverity.hint;
+					return EditorRuleSeverity.hint;
 			}
 
-		case RuleSeverity.upgrade:
+		case EditorRuleSeverity.upgrade:
 			switch (convertSeverityToDiagnostic(severity)) {
 				case DiagnosticSeverity.Hint:
-					return RuleSeverity.info;
+					return EditorRuleSeverity.info;
 				case DiagnosticSeverity.Information:
-					return RuleSeverity.warn;
+					return EditorRuleSeverity.warn;
 				case DiagnosticSeverity.Warning:
 				case DiagnosticSeverity.Error:
-					return RuleSeverity.error;
+					return EditorRuleSeverity.error;
 			}
 
 		default:
@@ -247,56 +245,21 @@ function adjustSeverityForOverride(severity: RuleSeverity, severityOverride?: Ru
 	}
 }
 
-export function writePattern(rules: Rule[]) {
-	const outPatterns = readCurrentPattern().concat(rules);
-	const patternStr = JSON.stringify(outPatterns, undefined, 2);
-	const filePath = getDevReplayPath();
-	try {
-		fs.writeFileSync(filePath, patternStr);
-	} catch(err) {
-		console.log(err.name);
-	}
-}
-
-
-function readCurrentPattern(): Rule[] {
-	const devreplayPath = getDevReplayPath();
-	if (devreplayPath === undefined) { return []; }
-	let fileContents = undefined;
-	try{
-		fileContents = tryReadFile(devreplayPath);
-	} catch {
-		return [];
-	}
-	if (fileContents === undefined) {
-		return [];
-	}
-	return JSON.parse(fileContents) as Rule[];
-}
-
 function getDevReplayPath() {
 	return path.join(workspaceFolder!.uri, '.devreplay.json');
 }
 
-export function tryReadFile(filename: string) {
-	if (!fs.existsSync(filename)) {
-		throw new Error(`Unable to open file: ${filename}`);
-	}
-	const buffer = Buffer.allocUnsafe(256);
-	const fd = fs.openSync(filename, 'r');
-	try {
-		fs.readSync(fd, buffer, 0, 256, 0);
-		if (buffer.readInt8(0) === 0x47 && buffer.readInt8(188) === 0x47) {
-			console.log(`${filename}: ignoring MPEG transport stream\n`);
+// export function writePattern(rules: Rule[]) {
+// 	const outPatterns = readCurrentPattern().concat(rules);
+// 	const patternStr = JSON.stringify(outPatterns, undefined, 2);
+// 	const filePath = getDevReplayPath();
+// 	try {
+// 		fs.writeFileSync(filePath, patternStr);
+// 	} catch(err) {
+// 		console.log(err.name);
+// 	}
+// }
 
-			return undefined;
-		}
-	} finally {
-		fs.closeSync(fd);
-	}
-
-	return fs.readFileSync(filename, 'utf8');
-}
 
 // Listen on the connection
 connection.listen();
