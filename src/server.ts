@@ -1,8 +1,7 @@
 'use strict';
 
-import { code2String, fixWithRules, LintOut, RuleSeverity, lint, makeSeverity, readCurrentRules, DevReplayRule } from 'devreplay';
+import { code2String, fixWithRules, LintOut, RuleSeverity, lint, makeSeverity, readCurrentRules, DevReplayRule, writeRuleFile } from 'devreplay';
 import * as path from 'path';
-import * as fs from 'fs';
 
 import {
 	CodeAction,
@@ -22,7 +21,6 @@ import {
 } from 'vscode-languageserver/node';
 import { TextDocument } from 'vscode-languageserver-textdocument';
 import { URI } from 'vscode-uri';
-import { dirname } from 'path';
 
 // Create a connection for the server. The connection uses Node's IPC as a transport.
 // Also include all preview / proposed LSP features.
@@ -71,9 +69,9 @@ connection.onInitialize((params: InitializeParams, _, progress) => {
 function validate(document: TextDocument) {
 	const diagnostics: Diagnostic[] = [];
 	const results = lintFile(document);
-	for (let i = 0; i < results.length; i += 1) {
-		diagnostics.push(makeDiagnostic(results[i], i));
-	}
+	results.forEach((result) => {
+		diagnostics.push(makeDiagnostic(result));
+	});
 	connection.sendDiagnostics({
 		uri: document.uri,
 		version: document.version,
@@ -91,7 +89,7 @@ function lintFile(doc: TextDocument) {
 	return lint([fileName], ruleFile);
 }
 
-function makeDiagnostic(result: LintOut, code: number): Diagnostic {
+function makeDiagnostic(result: LintOut): Diagnostic {
 	const range: Range = {
 		start: {
 			line: result.position.start.line - 1,
@@ -102,7 +100,7 @@ function makeDiagnostic(result: LintOut, code: number): Diagnostic {
 	};
 	const message = code2String(result.rule);
 	const severity = convertSeverityToDiagnostic(makeSeverity(result.rule.severity));
-	return Diagnostic.create(range, message, severity, code, 'devreplay');
+	return Diagnostic.create(range, message, severity, result.rule.ruleId, 'devreplay');
 }
 
 function setupDocumentsListeners() {
@@ -166,33 +164,31 @@ function makeFixTitle() {
 	return 'Fix by DevReplay';
 }
 
-function disableRule(rule: DevReplayRule) {
-	// ルールのIDを取得
-	const ruleId = rule.ruleId;
-	// ルールファイルを開く
-	// const ruleFile = URI.parse(getDevReplayPath()).fsPath;
+function changeRuleSeverity(ruleId: number, editorRuleSeverity: EditorRuleSeverity) {
 	const rules = readCurrentRules(workspaceFolder!.uri);
-	// ルールの場所を特定
-	const ruleIndex = rules.findIndex((r) => r.ruleId === ruleId);
-	// TODO: 該当ルールのseverityを"off"に変更
-	rules[ruleIndex].severity = RuleSeverity.off;
-	// ルールを保存
-	fs.writeFileSync(getDevReplayPath(), JSON.stringify(rules, null, '\t'));
+	for (let i = 0; i < rules.length; i += 1) {
+		if (rules[i].ruleId === ruleId) {
+			rules[i].severity = adjustSeverityForOverride(rules[i].severity, editorRuleSeverity);
+		}
+	}
+
+	writeRuleFile(rules, workspaceFolder!.uri);
 }
 
-enum EditorRuleSeverity {
+declare namespace EditorRuleSeverity {
 	// Original DevReplay values
-	info = 'I',
-	warn = 'W',
-	error = 'E',
-	hint = 'H',
+	const error = 'E';
+	const warn = 'W';
+	const info = 'I';
+	const hint = 'H';
 
 	// Added severity override changes
-	off = 'O',
-	default = 'default',
-	downgrade = 'downgrade',
-	upgrade = 'upgrade'
+	const off = 'O';
+	const downgrade = 'downgrade';
+	const upgrade = 'upgrade';
 }
+
+declare type EditorRuleSeverity = 'E' | 'W' | 'I' |  'H' | 'O' | 'downgrade' | 'upgrade'
 
 function convertSeverityToDiagnostic(severity: string) {
 	switch (severity) {
@@ -209,35 +205,39 @@ function convertSeverityToDiagnostic(severity: string) {
 	}
 }
 
-function adjustSeverityForOverride(severity: EditorRuleSeverity, severityOverride?: EditorRuleSeverity) {
+function adjustSeverityForOverride(severity: RuleSeverity, severityOverride?: EditorRuleSeverity) {
 	switch (severityOverride) {
 		case EditorRuleSeverity.off:
+			return RuleSeverity.off;
 		case EditorRuleSeverity.info:
+			return RuleSeverity.information;
 		case EditorRuleSeverity.warn:
+			return RuleSeverity.warning;
 		case EditorRuleSeverity.error:
+			return RuleSeverity.error;
 		case EditorRuleSeverity.hint:
-			return severityOverride;
+			return RuleSeverity.hint;
 
 		case EditorRuleSeverity.downgrade:
 			switch (convertSeverityToDiagnostic(severity)) {
 				case DiagnosticSeverity.Error:
-					return EditorRuleSeverity.warn;
+					return RuleSeverity.warning;
 				case DiagnosticSeverity.Warning:
-					return EditorRuleSeverity.info;
+					return RuleSeverity.information;
 				case DiagnosticSeverity.Information:
 				case DiagnosticSeverity.Hint:
-					return EditorRuleSeverity.hint;
+					return RuleSeverity.hint;
 			}
 
 		case EditorRuleSeverity.upgrade:
 			switch (convertSeverityToDiagnostic(severity)) {
 				case DiagnosticSeverity.Hint:
-					return EditorRuleSeverity.info;
+					return RuleSeverity.information;
 				case DiagnosticSeverity.Information:
-					return EditorRuleSeverity.warn;
+					return RuleSeverity.warning;
 				case DiagnosticSeverity.Warning:
 				case DiagnosticSeverity.Error:
-					return EditorRuleSeverity.error;
+					return RuleSeverity.error;
 			}
 
 		default:
@@ -248,18 +248,6 @@ function adjustSeverityForOverride(severity: EditorRuleSeverity, severityOverrid
 function getDevReplayPath() {
 	return path.join(workspaceFolder!.uri, '.devreplay.json');
 }
-
-// export function writePattern(rules: Rule[]) {
-// 	const outPatterns = readCurrentPattern().concat(rules);
-// 	const patternStr = JSON.stringify(outPatterns, undefined, 2);
-// 	const filePath = getDevReplayPath();
-// 	try {
-// 		fs.writeFileSync(filePath, patternStr);
-// 	} catch(err) {
-// 		console.log(err.name);
-// 	}
-// }
-
 
 // Listen on the connection
 connection.listen();
