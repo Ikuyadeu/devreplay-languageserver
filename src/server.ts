@@ -18,9 +18,33 @@ import {
 	WorkspaceFolder,
 	WorkspaceEdit,
 	VersionedTextDocumentIdentifier,
+	Command,
 } from 'vscode-languageserver/node';
 import { TextDocument } from 'vscode-languageserver-textdocument';
 import { URI } from 'vscode-uri';
+
+namespace CommandIds {
+	export const applySingleFix: string = 'devreplay.fix';
+	export const applyDisableRule: string = 'devreplay.applyDisableRule';
+	export const applyDowngradeSeverity: string = 'devreplay.applyDowngradeSeverity';
+	export const applyUpgradeSeverity: string = 'devreplay.applyUpgradeSeverity';
+}
+
+namespace EditorRuleSeverity {
+	// Original DevReplay values
+	export const error = 'E';
+	export const warn = 'W';
+	export const info = 'I';
+	export const hint = 'H';
+
+	// Added severity override changes
+	export const off = 'O';
+	export const downgrade = 'downgrade';
+	export const upgrade = 'upgrade';
+}
+
+type EditorRuleSeverity = 'E' | 'W' | 'I' |  'H' | 'O' | 'downgrade' | 'upgrade'
+
 
 // Create a connection for the server. The connection uses Node's IPC as a transport.
 // Also include all preview / proposed LSP features.
@@ -56,7 +80,11 @@ connection.onInitialize((params: InitializeParams, _, progress) => {
 				resolveProvider: true
 			},
 			executeCommandProvider: {
-				commands: ['devreplay.fix'],
+				commands: [
+					CommandIds.applySingleFix,
+					CommandIds.applyDisableRule,
+					CommandIds.applyDowngradeSeverity,
+					CommandIds.applyUpgradeSeverity],
 			},
 		},
 	};
@@ -142,9 +170,60 @@ function setupDocumentsListeners() {
 				CodeActionKind.QuickFix);
 			fixAction.diagnostics = [diagnostic];
 			codeActions.push(fixAction);
+
+			const disableTitle = `Disable Rule`;
+			const disableInProjectAction = CodeAction.create(
+				disableTitle,
+				Command.create(disableTitle,
+							   CommandIds.applyDisableRule,
+							   [targetRule.rule.ruleId]),
+				CodeActionKind.QuickFix);
+			disableInProjectAction.diagnostics = [diagnostic];
+			disableInProjectAction.isPreferred = false;
+			codeActions.push(disableInProjectAction);
+
+			const upgradeTitle = `Upgrade Rule Severity`;
+			const upgradeInProjectAction = CodeAction.create(
+				upgradeTitle,
+				Command.create(upgradeTitle,
+							   CommandIds.applyUpgradeSeverity,
+							   [targetRule.rule.ruleId]),
+				CodeActionKind.QuickFix);
+			upgradeInProjectAction.diagnostics = [diagnostic];
+			upgradeInProjectAction.isPreferred = false;
+			codeActions.push(upgradeInProjectAction);
+
+			const downgradeTitle = `Downgrade Rule Severity`;
+			const downgradeInProjectAction = CodeAction.create(
+				downgradeTitle,
+				Command.create(downgradeTitle,
+							   CommandIds.applyDowngradeSeverity,
+							   [targetRule.rule.ruleId]),
+				CodeActionKind.QuickFix);
+			downgradeInProjectAction.diagnostics = [diagnostic];
+			downgradeInProjectAction.isPreferred = false;
+			codeActions.push(downgradeInProjectAction);
 		});
 
 		return codeActions;
+	});
+
+	connection.onExecuteCommand((params) => {
+		if ((params.command !== CommandIds.applyDisableRule && 
+			 params.command !== CommandIds.applyUpgradeSeverity && 
+			 params.command !== CommandIds.applyDowngradeSeverity) || 
+			params.arguments === undefined) {
+			return;
+		}
+		const ruleId = String(params.arguments[0]);
+		if (params.command === CommandIds.applyDisableRule) {
+			changeRuleSeverity(ruleId, EditorRuleSeverity.off);
+		} else if (params.command === CommandIds.applyUpgradeSeverity) {
+			changeRuleSeverity(ruleId, EditorRuleSeverity.upgrade);
+		} else if (params.command === CommandIds.applyDowngradeSeverity) {
+			changeRuleSeverity(ruleId, EditorRuleSeverity.downgrade);
+		}
+		return;
 	});
 }
 
@@ -164,33 +243,21 @@ function makeFixTitle() {
 	return 'Fix by DevReplay';
 }
 
-function changeRuleSeverity(ruleId: number, editorRuleSeverity: EditorRuleSeverity) {
-	const rules = readCurrentRules(workspaceFolder!.uri);
+function changeRuleSeverity(ruleId: String, editorRuleSeverity: EditorRuleSeverity) {
+	if (workspaceFolder === undefined) {
+		return;
+	}
+	const fsPath = URI.parse(workspaceFolder.uri).fsPath;
+	let rules = readCurrentRules(fsPath);
 	for (let i = 0; i < rules.length; i += 1) {
-		if (rules[i].ruleId === ruleId) {
+		if (String(rules[i].ruleId) === ruleId) {
 			rules[i].severity = adjustSeverityForOverride(rules[i].severity, editorRuleSeverity);
 		}
 	}
-
-	writeRuleFile(rules, workspaceFolder!.uri);
+	writeRuleFile(rules, fsPath, false);
 }
 
-declare namespace EditorRuleSeverity {
-	// Original DevReplay values
-	const error = 'E';
-	const warn = 'W';
-	const info = 'I';
-	const hint = 'H';
-
-	// Added severity override changes
-	const off = 'O';
-	const downgrade = 'downgrade';
-	const upgrade = 'upgrade';
-}
-
-declare type EditorRuleSeverity = 'E' | 'W' | 'I' |  'H' | 'O' | 'downgrade' | 'upgrade'
-
-function convertSeverityToDiagnostic(severity: string) {
+function convertSeverityToDiagnostic(severity: RuleSeverity): DiagnosticSeverity {
 	switch (severity) {
 		case 'E':
 			return DiagnosticSeverity.Error;
@@ -205,38 +272,38 @@ function convertSeverityToDiagnostic(severity: string) {
 	}
 }
 
-function adjustSeverityForOverride(severity: RuleSeverity, severityOverride?: EditorRuleSeverity) {
+function adjustSeverityForOverride(severity: RuleSeverity, severityOverride?: EditorRuleSeverity): RuleSeverity {
 	switch (severityOverride) {
-		case EditorRuleSeverity.off:
-			return RuleSeverity.off;
-		case EditorRuleSeverity.info:
-			return RuleSeverity.information;
-		case EditorRuleSeverity.warn:
-			return RuleSeverity.warning;
 		case EditorRuleSeverity.error:
 			return RuleSeverity.error;
+		case EditorRuleSeverity.warn:
+			return RuleSeverity.warning;
+		case EditorRuleSeverity.info:
+			return RuleSeverity.information;
 		case EditorRuleSeverity.hint:
 			return RuleSeverity.hint;
+		case EditorRuleSeverity.off:
+			return RuleSeverity.off;
 
 		case EditorRuleSeverity.downgrade:
-			switch (convertSeverityToDiagnostic(severity)) {
-				case DiagnosticSeverity.Error:
+			switch (severity) {
+				case RuleSeverity.error:
 					return RuleSeverity.warning;
-				case DiagnosticSeverity.Warning:
+				case RuleSeverity.warning:
 					return RuleSeverity.information;
-				case DiagnosticSeverity.Information:
-				case DiagnosticSeverity.Hint:
+				case RuleSeverity.information:
+				case RuleSeverity.hint:
 					return RuleSeverity.hint;
 			}
 
 		case EditorRuleSeverity.upgrade:
-			switch (convertSeverityToDiagnostic(severity)) {
-				case DiagnosticSeverity.Hint:
+			switch (severity) {
+				case RuleSeverity.hint:
 					return RuleSeverity.information;
-				case DiagnosticSeverity.Information:
+				case RuleSeverity.information:
 					return RuleSeverity.warning;
-				case DiagnosticSeverity.Warning:
-				case DiagnosticSeverity.Error:
+				case RuleSeverity.warning:
+				case RuleSeverity.error:
 					return RuleSeverity.error;
 			}
 
