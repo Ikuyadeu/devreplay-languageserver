@@ -19,6 +19,7 @@ import {
 	WorkspaceEdit,
 	VersionedTextDocumentIdentifier,
 	Command,
+	DiagnosticTag,
 } from 'vscode-languageserver/node';
 import { TextDocument } from 'vscode-languageserver-textdocument';
 import { URI } from 'vscode-uri';
@@ -128,7 +129,13 @@ function makeDiagnostic(result: LintOut): Diagnostic {
 	};
 	const message = code2String(result.rule);
 	const severity = convertSeverityToDiagnostic(makeSeverity(result.rule.severity));
-	return Diagnostic.create(range, message, severity, result.rule.ruleId, 'devreplay');
+	const diagnostic = Diagnostic.create(range, message, severity, result.rule.ruleId, 'devreplay');
+	if (result.rule.deprecated) {
+		diagnostic.tags = [DiagnosticTag.Deprecated];
+	} else if (result.rule.unnecessary) {
+		diagnostic.tags = [DiagnosticTag.Unnecessary];
+	}
+	return diagnostic;
 }
 
 function setupDocumentsListeners() {
