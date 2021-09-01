@@ -32,18 +32,18 @@ namespace CommandIds {
 
 namespace EditorRuleSeverity {
 	// Original DevReplay values
-	export const error = 'E';
-	export const warn = 'W';
-	export const info = 'I';
-	export const hint = 'H';
+	export const error = 'error';
+	export const warn = 'warning';
+	export const info = 'information';
+	export const hint = 'hint';
 
 	// Added severity override changes
-	export const off = 'O';
+	export const off = 'off';
 	export const downgrade = 'downgrade';
 	export const upgrade = 'upgrade';
 }
 
-type EditorRuleSeverity = 'E' | 'W' | 'I' |  'H' | 'O' | 'downgrade' | 'upgrade'
+type EditorRuleSeverity = 'error' | 'warning' | 'information' |  'hint' | 'off' | 'downgrade' | 'upgrade'
 
 
 // Create a connection for the server. The connection uses Node's IPC as a transport.
@@ -259,13 +259,13 @@ function changeRuleSeverity(ruleId: String, editorRuleSeverity: EditorRuleSeveri
 
 function convertSeverityToDiagnostic(severity: RuleSeverity): DiagnosticSeverity {
 	switch (severity) {
-		case 'E':
+		case RuleSeverity.error:
 			return DiagnosticSeverity.Error;
-		case 'W':
+		case RuleSeverity.warning:
 			return DiagnosticSeverity.Warning;
-		case 'I':
+		case RuleSeverity.information:
 			return DiagnosticSeverity.Information;
-		case 'H':
+		case RuleSeverity.hint:
 			return DiagnosticSeverity.Hint;
 		default:
 			return DiagnosticSeverity.Warning;
