@@ -1,8 +1,16 @@
 'use strict';
 
-import { code2String, fixWithRules, LintOut, RuleSeverity, lint, makeSeverity, readCurrentRules, DevReplayRule, writeRuleFile } from 'devreplay';
+import {
+	code2String2,
+	DevReplayRule,
+	fixWithRule,
+	LintOut,
+	lint,
+	makeSeverity,
+	readCurrentRules,
+	RuleSeverity,
+	writeRuleFile } from 'devreplay';
 import * as path from 'path';
-
 import {
 	CodeAction,
 	CodeActionKind,
@@ -35,7 +43,7 @@ namespace EditorRuleSeverity {
 	// Original DevReplay values
 	export const error = 'error';
 	export const warn = 'warning';
-	export const info = 'information';
+	export const info = 'info';
 	export const hint = 'hint';
 
 	// Added severity override changes
@@ -44,7 +52,7 @@ namespace EditorRuleSeverity {
 	export const upgrade = 'upgrade';
 }
 
-type EditorRuleSeverity = 'error' | 'warning' | 'information' |  'hint' | 'off' | 'downgrade' | 'upgrade'
+type EditorRuleSeverity = 'error' | 'warning' | 'info' |  'hint' | 'off' | 'downgrade' | 'upgrade'
 
 
 // Create a connection for the server. The connection uses Node's IPC as a transport.
@@ -127,7 +135,7 @@ function makeDiagnostic(result: LintOut): Diagnostic {
 			line: result.position.end.line - 1,
 			character: result.position.end.character - 1}
 	};
-	const message = code2String(result.rule);
+	const message = code2String2(result);
 	const severity = convertSeverityToDiagnostic(makeSeverity(result.rule.severity));
 	const diagnostic = Diagnostic.create(range, message, severity, result.rule.ruleId, 'devreplay');
 	if (result.rule.deprecated) {
@@ -169,11 +177,11 @@ function setupDocumentsListeners() {
 		const codeActions: CodeAction[] = [];
 		const results = lintFile(textDocument);
 		diagnostics.forEach((diagnostic) => {
-			const targetRule = results[Number(diagnostic.code)];
-			const title = makeFixTitle();
+			const result = results[Number(diagnostic.code)];
+			const title = makeFixTitle(result.fixed);
 			const fixAction = CodeAction.create(
 				title,
-				createEditByPattern(textDocument, diagnostic.range, targetRule.rule),
+				createEditByRule(textDocument, diagnostic.range, result.rule),
 				CodeActionKind.QuickFix);
 			fixAction.diagnostics = [diagnostic];
 			codeActions.push(fixAction);
@@ -183,7 +191,7 @@ function setupDocumentsListeners() {
 				disableTitle,
 				Command.create(disableTitle,
 							   CommandIds.applyDisableRule,
-							   [targetRule.rule.ruleId]),
+							   [result.rule.ruleId]),
 				CodeActionKind.QuickFix);
 			disableInProjectAction.diagnostics = [diagnostic];
 			disableInProjectAction.isPreferred = false;
@@ -194,7 +202,7 @@ function setupDocumentsListeners() {
 				upgradeTitle,
 				Command.create(upgradeTitle,
 							   CommandIds.applyUpgradeSeverity,
-							   [targetRule.rule.ruleId]),
+							   [result.rule.ruleId]),
 				CodeActionKind.QuickFix);
 			upgradeInProjectAction.diagnostics = [diagnostic];
 			upgradeInProjectAction.isPreferred = false;
@@ -205,7 +213,7 @@ function setupDocumentsListeners() {
 				downgradeTitle,
 				Command.create(downgradeTitle,
 							   CommandIds.applyDowngradeSeverity,
-							   [targetRule.rule.ruleId]),
+							   [result.rule.ruleId]),
 				CodeActionKind.QuickFix);
 			downgradeInProjectAction.diagnostics = [diagnostic];
 			downgradeInProjectAction.isPreferred = false;
@@ -234,9 +242,9 @@ function setupDocumentsListeners() {
 	});
 }
 
-function createEditByPattern(document: TextDocument, range: Range, pattern: DevReplayRule): WorkspaceEdit {
+function createEditByRule(document: TextDocument, range: Range, rule: DevReplayRule): WorkspaceEdit {
 	const textDocumentIdentifier: VersionedTextDocumentIdentifier = {uri: document.uri, version: document.version};
-	const newText = fixWithRules(document.getText(range), [pattern]);
+	const newText = fixWithRule(document.getText(range), rule);
 	if (newText !== undefined) {
 		const edits = [TextEdit.replace(range, newText)];
 
@@ -246,8 +254,8 @@ function createEditByPattern(document: TextDocument, range: Range, pattern: DevR
 	return { documentChanges: [] };
 }
 
-function makeFixTitle() {
-	return 'Fix by DevReplay';
+function makeFixTitle(fixed: string): string {
+	return `Fix to ${fixed}`;
 }
 
 function changeRuleSeverity(ruleId: String, editorRuleSeverity: EditorRuleSeverity) {
@@ -279,6 +287,11 @@ function convertSeverityToDiagnostic(severity: RuleSeverity): DiagnosticSeverity
 	}
 }
 
+/**
+ * Returns the severity that should be used for the rule.
+ * @param severity original severity
+ * @param severityOverride override severity
+ */
 function adjustSeverityForOverride(severity: RuleSeverity, severityOverride?: EditorRuleSeverity): RuleSeverity {
 	switch (severityOverride) {
 		case EditorRuleSeverity.error:
