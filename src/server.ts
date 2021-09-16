@@ -9,7 +9,8 @@ import {
 	makeSeverity,
 	readCurrentRules,
 	RuleSeverity,
-	writeRuleFile } from 'devreplay';
+	writeRuleFile, 
+	fixWithRules} from 'devreplay';
 import * as path from 'path';
 import {
 	CodeAction,
@@ -34,6 +35,7 @@ import { URI } from 'vscode-uri';
 
 namespace CommandIds {
 	export const applySingleFix: string = 'devreplay.fix';
+	export const applyAllFix: string = 'devreplay.fixall';
 	export const applyDisableRule: string = 'devreplay.applyDisableRule';
 	export const applyDowngradeSeverity: string = 'devreplay.applyDowngradeSeverity';
 	export const applyUpgradeSeverity: string = 'devreplay.applyUpgradeSeverity';
@@ -85,12 +87,13 @@ connection.onInitialize((params: InitializeParams, _, progress) => {
 				}
 			},
 			codeActionProvider: {
-				codeActionKinds: [CodeActionKind.QuickFix],
+				codeActionKinds: [CodeActionKind.QuickFix, CodeActionKind.SourceFixAll],
 				resolveProvider: true
 			},
 			executeCommandProvider: {
 				commands: [
 					CommandIds.applySingleFix,
+					CommandIds.applyAllFix,
 					CommandIds.applyDisableRule,
 					CommandIds.applyDowngradeSeverity,
 					CommandIds.applyUpgradeSeverity],
@@ -176,6 +179,25 @@ function setupDocumentsListeners() {
 		}
 		const codeActions: CodeAction[] = [];
 		const results = lintFile(textDocument);
+		
+		const rules = results.map((result) => result.rule);
+		const allTitle = `Apply all fixes for ${rules.length} rules`;
+		const range = {
+			start: {
+				line: 0,
+				character: 0},
+			end: {
+				line: textDocument.lineCount - 1,
+				character: Number.MAX_SAFE_INTEGER}
+		};
+		const allCommand = CodeAction.create(
+			allTitle,
+			createEditByRules(textDocument, range, rules),
+			CodeActionKind.QuickFix);
+		allCommand.diagnostics = diagnostics;
+		allCommand.isPreferred = false;
+		codeActions.push(allCommand);
+
 		diagnostics.forEach((diagnostic) => {
 			const result = results[Number(diagnostic.code)];
 			const title = makeFixTitle(result.fixed);
@@ -184,6 +206,7 @@ function setupDocumentsListeners() {
 				createEditByRule(textDocument, diagnostic.range, result.rule),
 				CodeActionKind.QuickFix);
 			fixAction.diagnostics = [diagnostic];
+			fixAction.isPreferred = true;
 			codeActions.push(fixAction);
 
 			const disableTitle = `Disable Rule`;
@@ -247,6 +270,18 @@ function createEditByRule(document: TextDocument, range: Range, rule: DevReplayR
 	const newText = fixWithRule(document.getText(range), rule);
 	if (newText !== undefined) {
 		const edits = [TextEdit.replace(range, newText)];
+
+		return { documentChanges: [TextDocumentEdit.create(textDocumentIdentifier, edits)] };
+	}
+
+	return { documentChanges: [] };
+}
+
+function createEditByRules(document: TextDocument, range: Range, rules: DevReplayRule[]): WorkspaceEdit {
+	const textDocumentIdentifier: VersionedTextDocumentIdentifier = {uri: document.uri, version: document.version};
+	const newText = fixWithRules(document.getText(), rules);
+	if (newText !== undefined) {
+		const edits = [TextEdit.replace(range , newText)];
 
 		return { documentChanges: [TextDocumentEdit.create(textDocumentIdentifier, edits)] };
 	}
