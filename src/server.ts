@@ -178,9 +178,12 @@ function setupDocumentsListeners() {
 			return [];
 		}
 		const codeActions: CodeAction[] = [];
-		const results = lintFile(textDocument);
 		
-		const rules = results.map((result) => result.rule);
+		if (workspaceFolder === undefined) {
+			return [];
+		}
+		const fsPath = URI.parse(workspaceFolder.uri).fsPath;
+		let rules = readCurrentRules(fsPath);
 		const allTitle = `Apply all fixes for ${rules.length} rules`;
 		const range = {
 			start: {
@@ -199,11 +202,11 @@ function setupDocumentsListeners() {
 		codeActions.push(allCommand);
 
 		diagnostics.forEach((diagnostic) => {
-			const result = results[Number(diagnostic.code)];
-			const title = makeFixTitle(result.fixed);
+			const rule = rules[Number(diagnostic.code)];
+			const title = makeFixTitle(diagnostic.message);
 			const fixAction = CodeAction.create(
 				title,
-				createEditByRule(textDocument, diagnostic.range, result.rule),
+				createEditByRule(textDocument, diagnostic.range, rule),
 				CodeActionKind.QuickFix);
 			fixAction.diagnostics = [diagnostic];
 			fixAction.isPreferred = true;
@@ -214,7 +217,7 @@ function setupDocumentsListeners() {
 				disableTitle,
 				Command.create(disableTitle,
 							   CommandIds.applyDisableRule,
-							   [result.rule.ruleId]),
+							   [rule.ruleId]),
 				CodeActionKind.QuickFix);
 			disableInProjectAction.diagnostics = [diagnostic];
 			disableInProjectAction.isPreferred = false;
@@ -225,7 +228,7 @@ function setupDocumentsListeners() {
 				upgradeTitle,
 				Command.create(upgradeTitle,
 							   CommandIds.applyUpgradeSeverity,
-							   [result.rule.ruleId]),
+							   [rule.ruleId]),
 				CodeActionKind.QuickFix);
 			upgradeInProjectAction.diagnostics = [diagnostic];
 			upgradeInProjectAction.isPreferred = false;
@@ -236,7 +239,7 @@ function setupDocumentsListeners() {
 				downgradeTitle,
 				Command.create(downgradeTitle,
 							   CommandIds.applyDowngradeSeverity,
-							   [result.rule.ruleId]),
+							   [rule.ruleId]),
 				CodeActionKind.QuickFix);
 			downgradeInProjectAction.diagnostics = [diagnostic];
 			downgradeInProjectAction.isPreferred = false;
@@ -289,7 +292,19 @@ function createEditByRules(document: TextDocument, range: Range, rules: DevRepla
 	return { documentChanges: [] };
 }
 
-function makeFixTitle(fixed: string): string {
+function msg2fixed(msg: string) {
+	const splited = msg.split('should be');
+	if (splited.length === 2) {
+		return splited[1].trim();
+	}
+	return undefined;
+}
+
+function makeFixTitle(msg: string): string {
+	const fixed = msg2fixed(msg);
+	if (fixed === undefined) {
+		return 'Fix by DevReplay';
+	}
 	return `Fix to ${fixed}`;
 }
 
