@@ -138,6 +138,7 @@ function makeDiagnostic(result: LintOut): Diagnostic {
 			line: result.position.end.line - 1,
 			character: result.position.end.character - 1}
 	};
+	
 	const message = code2String2(result);
 	const severity = convertSeverityToDiagnostic(makeSeverity(result.rule.severity));
 	const diagnostic = Diagnostic.create(range, message, severity, result.rule.ruleId, 'devreplay');
@@ -184,7 +185,7 @@ function setupDocumentsListeners() {
 		}
 		const fsPath = URI.parse(workspaceFolder.uri).fsPath;
 		let rules = readCurrentRules(fsPath);
-		const allTitle = `Apply all fixes for ${rules.length} rules`;
+		const allTitle = `Apply all ${diagnostics.length} fixes`;
 		const range = {
 			start: {
 				line: 0,
@@ -197,22 +198,27 @@ function setupDocumentsListeners() {
 			allTitle,
 			createEditByRules(textDocument, range, rules),
 			CodeActionKind.QuickFix);
-		allCommand.diagnostics = diagnostics;
-		allCommand.isPreferred = false;
-		codeActions.push(allCommand);
+		allCommand.diagnostics = diagnostics.filter((diag) => rules[Number(diag.code) - 1].after !== undefined);
+		if (allCommand.diagnostics.length > 0) {
+			allCommand.isPreferred = false;
+			codeActions.push(allCommand);
+		}
 
 		diagnostics.forEach((diagnostic) => {
-			const rule = rules[Number(diagnostic.code)];
-			const title = makeFixTitle(diagnostic.message);
-			const fixAction = CodeAction.create(
-				title,
-				createEditByRule(textDocument, diagnostic.range, rule),
-				CodeActionKind.QuickFix);
-			fixAction.diagnostics = [diagnostic];
-			fixAction.isPreferred = true;
-			codeActions.push(fixAction);
+			const rule = rules[Number(diagnostic.code) - 1];
 
-			const disableTitle = `Disable Rule`;
+			if (rule.after !== undefined) {
+				const title = makeFixTitle(diagnostic.message);
+				const fixAction = CodeAction.create(
+					title,
+					createEditByRule(textDocument, diagnostic.range, rule),
+					CodeActionKind.QuickFix);
+				fixAction.diagnostics = [diagnostic];
+				fixAction.isPreferred = true;
+				codeActions.push(fixAction);
+			}
+
+			const disableTitle = `Disable Rule ${rule.ruleId}`;
 			const disableInProjectAction = CodeAction.create(
 				disableTitle,
 				Command.create(disableTitle,
@@ -223,7 +229,7 @@ function setupDocumentsListeners() {
 			disableInProjectAction.isPreferred = false;
 			codeActions.push(disableInProjectAction);
 
-			const upgradeTitle = `Upgrade Rule Severity`;
+			const upgradeTitle = `Upgrade Rule ${rule.ruleId} Severity`;
 			const upgradeInProjectAction = CodeAction.create(
 				upgradeTitle,
 				Command.create(upgradeTitle,
@@ -234,7 +240,7 @@ function setupDocumentsListeners() {
 			upgradeInProjectAction.isPreferred = false;
 			codeActions.push(upgradeInProjectAction);
 
-			const downgradeTitle = `Downgrade Rule Severity`;
+			const downgradeTitle = `Downgrade Rule ${rule.ruleId} Severity`;
 			const downgradeInProjectAction = CodeAction.create(
 				downgradeTitle,
 				Command.create(downgradeTitle,
@@ -305,7 +311,7 @@ function makeFixTitle(msg: string): string {
 	if (fixed === undefined) {
 		return 'Fix by DevReplay';
 	}
-	return `Fix to ${fixed}`;
+	return `Fix to '${fixed}`;
 }
 
 function changeRuleSeverity(ruleId: String, editorRuleSeverity: EditorRuleSeverity) {
