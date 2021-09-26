@@ -2,22 +2,19 @@
 
 [![NPM Version](https://img.shields.io/npm/v/devreplay-server.svg)](https://npmjs.org/package/devreplay-server)
 [![NPM Downloads](https://img.shields.io/npm/dm/devreplay-server.svg)](https://npmjs.org/package/devreplay-server)
-[![NPM Version](https://img.shields.io/npm/l/devreplay-server.svg)](https://npmjs.org/package/devreplay-server)
+[![License](https://img.shields.io/npm/l/devreplay-server.svg)](https://npmjs.org/package/devreplay-server)
 
-### Installing
+## Installing
 
-```
+```sh
 sudo npm install -g devreplay-server
 ```
 
+## Running the Language server
 
-### Running the Language server
-
-```
+```sh
 devreplay-server --stdio
 ```
-
-
 
 ## Editor Extension Support
 
@@ -30,11 +27,6 @@ devreplay-server --stdio
 ### Visual Studio Code
 
 DevReplay for VS Code is available [here]((https://marketplace.visualstudio.com/items?itemName=Ikuyadeu.devreplay))
-
-
-### Atom IDE
-
-* [Progress](https://github.com/devreplay/devreplay-atom)
 
 ### Sublime Text
 

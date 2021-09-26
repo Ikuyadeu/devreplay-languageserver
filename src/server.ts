@@ -185,23 +185,26 @@ function setupDocumentsListeners() {
 		}
 		const fsPath = URI.parse(workspaceFolder.uri).fsPath;
 		let rules = readCurrentRules(fsPath);
-		const allTitle = `Apply all ${diagnostics.length} fixes`;
-		const range = {
-			start: {
-				line: 0,
-				character: 0},
-			end: {
-				line: textDocument.lineCount - 1,
-				character: Number.MAX_SAFE_INTEGER}
-		};
-		const allCommand = CodeAction.create(
-			allTitle,
-			createEditByRules(textDocument, range, rules),
-			CodeActionKind.QuickFix);
-		allCommand.diagnostics = diagnostics.filter((diag) => rules[Number(diag.code) - 1].after !== undefined);
-		if (allCommand.diagnostics.length > 0) {
-			allCommand.isPreferred = false;
-			codeActions.push(allCommand);
+		const allDiagnostics = diagnostics.filter((diag) => rules[Number(diag.code) - 1].after !== undefined);
+		if (allDiagnostics.length > 1) {
+			const allTitle = `Apply all ${allDiagnostics.length} fixes`;
+			const range = {
+				start: {
+					line: 0,
+					character: 0},
+				end: {
+					line: textDocument.lineCount - 1,
+					character: Number.MAX_SAFE_INTEGER}
+			};
+			const allCommand = CodeAction.create(
+				allTitle,
+				createEditByRules(textDocument, range, rules),
+				CodeActionKind.QuickFix);
+			allCommand.diagnostics = allDiagnostics;
+			if (allCommand.diagnostics.length > 0) {
+				allCommand.isPreferred = false;
+				codeActions.push(allCommand);
+			}
 		}
 
 		diagnostics.forEach((diagnostic) => {
