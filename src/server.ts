@@ -29,6 +29,7 @@ import {
 	VersionedTextDocumentIdentifier,
 	Command,
 	DiagnosticTag,
+	ProposedFeatures,
 } from 'vscode-languageserver/node';
 import { TextDocument } from 'vscode-languageserver-textdocument';
 import { URI } from 'vscode-uri';
@@ -59,7 +60,7 @@ type EditorRuleSeverity = 'error' | 'warning' | 'info' |  'hint' | 'off' | 'down
 
 // Create a connection for the server. The connection uses Node's IPC as a transport.
 // Also include all preview / proposed LSP features.
-const connection = createConnection();
+const connection = createConnection(ProposedFeatures.all);
 connection.console.info(`DevReplay server running in node ${process.version}`);
 
 const documents: TextDocuments<TextDocument> = new TextDocuments(TextDocument);
