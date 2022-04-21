@@ -393,7 +393,12 @@ function adjustSeverityForOverride(severity: RuleSeverity, severityOverride?: Ed
 }
 
 function getDevReplayPath() {
-	return path.join(workspaceFolder!.uri, '.devreplay.json');
+	let rulePath = path.join(workspaceFolder!.uri, '.devreplay.json');
+	if (process.platform === 'win32' && /^'.* .*'$/.exec(rulePath)) {
+        // replace single quotes with double quotes on windows
+        rulePath = rulePath.replace(/^'(.*)'$/, '"$1"');
+    }
+	return rulePath;
 }
 
 // Listen on the connection
