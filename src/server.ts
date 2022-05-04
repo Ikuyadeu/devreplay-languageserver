@@ -108,6 +108,7 @@ connection.onInitialize((params: InitializeParams, _, progress) => {
  * @param document text document to analyze
  */
 function validate(document: TextDocument) {
+	connection.console.info(`Execute validate for ${document.uri}`);
 	const diagnostics: Diagnostic[] = [];
 	const results = lintFile(document);
 	results.forEach((result) => {
@@ -124,6 +125,7 @@ function lintFile(doc: TextDocument) {
 	const ruleFile = URI.parse(getDevReplayPath()).fsPath;
 	const fileName = URI.parse(doc.uri).fsPath;
 	if (fileName.endsWith(ruleFile) || fileName.endsWith('.git')) {
+		connection.console.info(`Execute lintFile for ${doc.uri}`);
 		return [];
 	}
 
@@ -398,6 +400,7 @@ function getDevReplayPath() {
         // replace single quotes with double quotes on windows
         rulePath = rulePath.replace(/^'(.*)'$/, '"$1"');
     }
+	connection.console.info(`Rule file is ${rulePath}`);
 	return rulePath;
 }
 
