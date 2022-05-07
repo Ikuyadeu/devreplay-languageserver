@@ -395,11 +395,12 @@ function adjustSeverityForOverride(severity: RuleSeverity, severityOverride?: Ed
 }
 
 function getDevReplayPath() {
-	let rulePath = path.join(workspaceFolder!.uri, '.devreplay.json');
-	if (process.platform === 'win32' && /^'.* .*'$/.exec(rulePath)) {
-        // replace single quotes with double quotes on windows
-        rulePath = rulePath.replace(/^'(.*)'$/, '"$1"');
-    }
+	const fsPath = URI.parse(workspaceFolder!.uri).fsPath;
+	let rulePath = path.join(fsPath, '.devreplay.json');
+	// if (process.platform === 'win32' && /^'.* .*'$/.exec(rulePath)) {
+    //     // replace single quotes with double quotes on windows
+    //     rulePath = rulePath.replace(/^'(.*)'$/, '"$1"');
+    // }
 	connection.console.info(`Rule file is ${rulePath}`);
 	return rulePath;
 }
