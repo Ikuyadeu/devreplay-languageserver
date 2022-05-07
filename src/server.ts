@@ -30,6 +30,8 @@ import {
 	Command,
 	DiagnosticTag,
 	ProposedFeatures,
+	Position,
+	uinteger
 } from 'vscode-languageserver/node';
 import { TextDocument } from 'vscode-languageserver-textdocument';
 import { URI } from 'vscode-uri';
@@ -133,14 +135,11 @@ function lintFile(doc: TextDocument) {
 }
 
 function makeDiagnostic(result: LintOut): Diagnostic {
-	const range: Range = {
-		start: {
-			line: result.position.start.line - 1,
-			character: result.position.start.character - 1},
-		end: {
-			line: result.position.end.line - 1,
-			character: result.position.end.character - 1}
-	};
+	
+	const range: Range = Range.create(
+		Position.create(result.position.start.line - 1, 0),
+		Position.create(result.position.end.line - 1, uinteger.MAX_VALUE)
+	);
 	
 	const message = code2String2(result);
 	const severity = convertSeverityToDiagnostic(makeSeverity(result.rule.severity));
